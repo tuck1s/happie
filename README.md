@@ -1,2 +1,3 @@
 # happie
-HA Proxy ping endpoint
+"Ping" a TCP endpoint via HAProxy instance
+
