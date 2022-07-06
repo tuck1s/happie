@@ -1,8 +1,7 @@
 # happie
 "Ping" a TCP endpoint via HAProxy instance
 
-## Usage
-
+## Command-line usage
 ```
 ./happie
 HAProxy tester
@@ -23,14 +22,13 @@ FLAGS:
         Use PROXY protocol v1 header
 ```
 
-## Command-line utlity
-
-Build the tool:
+## Building
 ```
 cd cmd/happie
 go build
 ```
 
+## Examples
 Ping a Gmail server via a proxy using SMTP - using PROXY header version 2
 ```
 ./happie 35.90.110.253:5000 172.31.15.167:0 64.233.167.27:smtp
