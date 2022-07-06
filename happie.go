@@ -40,7 +40,7 @@ func split_ip_port(addr_port string) (netip.AddrPort, error) {
 	return netip.AddrPortFrom(addr, uint16(p_int)), nil
 }
 
-// Register a new [PROXY Protocol]https://www.haproxy.org/download/2.6/doc/proxy-protocol.txt) association, comprising:
+// Register a new PROXY Protocol (https://www.haproxy.org/download/2.6/doc/proxy-protocol.txt) association, comprising:
 //  The address:port to reach the proxy service.
 //  source address:port - that the proxy should use for its outward connection.
 //      This address must be hosted on the proxy.

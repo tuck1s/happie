@@ -12,17 +12,6 @@
             "program": "${fileDirname}"
         },
         {
-            "name": "Launch file",
-            "type": "go",
-            "request": "launch",
-            "mode": "debug",
-            "program": "${file}",
-            "args": [
-                "104.160.64.82 - 104.160.64.93",
-                //"192.168.255.128/25"
-            ]
-        },
-        {
             "name": "Get help",
             "type": "go",
             "request": "launch",
