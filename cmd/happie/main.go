@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -64,21 +63,25 @@ func main() {
 	source_addr_port := flag.Arg(1)
 	dest_addr_port := flag.Arg(2)
 
-	hdr := happie.Connection(proxy_addr_port, source_addr_port, dest_addr_port)
-	_ = hdr
-
-	if *proxy_protocol_v1 {
-		source_addr, source_port := happie.CheckedSplitHostPort(source_addr_port)
-		dest_addr, dest_port := happie.CheckedSplitHostPort(dest_addr_port)
-		hapv1 := fmt.Sprintf("PROXY TCP4 %s %s %d %d\r\n", source_addr, dest_addr, source_port, dest_port)
-		fmt.Printf("Sending v1 header %s", hapv1)
-		reply := proxy_request(proxy_addr_port, []byte(hapv1))
-		fmt.Printf("Reply: %s\n", string(reply))
-
-	} else {
-		buf := new(bytes.Buffer)
-		fmt.Printf("Sending v2 header\n%s\n", hex.Dump(buf.Bytes()))
-		reply := proxy_request(proxy_addr_port, buf.Bytes())
-		fmt.Printf("Reply: %s\n", string(reply))
+	conn, err := happie.New(proxy_addr_port, source_addr_port, dest_addr_port)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	var hdr []byte
+	var version string
+	if *proxy_protocol_v1 {
+		hdr, err = conn.V1_Bytes()
+		version = "1"
+	} else {
+		hdr, err = conn.V2_Bytes()
+		version = "2"
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Sending header version %s\n%s\n", version, hex.Dump(hdr))
+	reply := proxy_request(proxy_addr_port, hdr)
+	fmt.Printf("Reply: %s\n", string(reply))
 }
