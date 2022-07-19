@@ -148,7 +148,7 @@ func (c *HAproxy_conn) V2_Bytes() ([]byte, error) {
 		return nil, err
 	}
 
-	// Already checked addresses are the SAME type (v4 / v6)
+	// Write the Address Family and Protocol fields
 	err = header.WriteByte(c.V2_proto())
 	if err != nil {
 		return nil, err
@@ -176,8 +176,7 @@ func (c *HAproxy_conn) V2_Bytes() ([]byte, error) {
 	}
 
 	// Put the length of the composite address fields, then the addresses, into the header
-	len := uint16(addrs.Len())
-	err = binary.Write(header, binary.BigEndian, len)
+	err = binary.Write(header, binary.BigEndian, uint16(addrs.Len()))
 	if err != nil {
 		return nil, err
 	}
