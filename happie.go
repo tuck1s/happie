@@ -60,6 +60,10 @@ func New(proxy_addr_port, source_addr_port, dest_addr_port string) (*HAproxy_con
 	if err != nil {
 		return nil, err
 	}
+	// Check that source and dest belong to the same address family - otherwise error
+	if sa.Addr().Is6() != da.Addr().Is6() {
+		return nil, errors.New("Source and dest addr must be both IPv4, or both IPv6 - cannot be mixed")
+	}
 	conn := HAproxy_conn{
 		proxy:  pa,
 		source: sa,
@@ -69,10 +73,10 @@ func New(proxy_addr_port, source_addr_port, dest_addr_port string) (*HAproxy_con
 }
 
 // Return the PROXY connection header in version 1 (text) format, as a byte slice
-// Currently this conversion is hardcoded for ipv4 source and dest addresses, and TCP connection type
-// TODO: support IPv6 addresses and UDP connection types
+// Note V1 in any case only supports TCP (stream) connections, not UDP
 func (c *HAproxy_conn) V1_Bytes() ([]byte, error) {
-	hapv1 := fmt.Sprintf("PROXY TCP4 %s %s %d %d\r\n",
+	hapv1 := fmt.Sprintf("PROXY %s %s %s %d %d\r\n",
+		c.V1_proto(),
 		c.source.Addr().String(), c.dest.Addr().String(), c.source.Port(), c.dest.Port())
 	// Conversion problems are signalled in the returned string - see https://pkg.go.dev/fmt#hdr-Format_errors
 	if strings.Contains(hapv1, "%!") {
@@ -82,9 +86,46 @@ func (c *HAproxy_conn) V1_Bytes() ([]byte, error) {
 	}
 }
 
+// Return the protocol version/family (section 2.1 of spec)
+func (c *HAproxy_conn) V1_proto() string {
+	if c.source.Addr().Is6() {
+		return "TCP6"
+	} else {
+		return "TCP4"
+	}
+}
+
+// Version & Command field (byte 13 - section 2.2 of spec)
+const (
+	V2_VERSION = uint8(0x2 << 4)
+
+	V2_CMD_LOCAL = uint8(0x0) // Unused in this library
+	V2_CMD_PROXY = uint8(0x1)
+)
+
+// Address Family & Transport Protocol field (byte 14 - section 2.2 of spec)
+const (
+	V2_AF_UNSPEC = uint8(0x0 << 4)
+	V2_AF_INET   = uint8(0x1 << 4)
+	V2_AF_INET6  = uint8(0x2 << 4)
+	V2_AF_UNIX   = uint8(0x3 << 4)
+
+	V2_TRANSPORT_UNSPEC = uint8(0x0)
+	V2_TRANSPORT_STREAM = uint8(0x1)
+	V2_TRANSPORT_DGRAM  = uint8(0x2)
+)
+
+func (c *HAproxy_conn) V2_proto() uint8 {
+	if c.source.Addr().Is6() {
+		return V2_AF_INET6 | V2_TRANSPORT_STREAM
+	} else {
+		return V2_AF_INET | V2_TRANSPORT_STREAM
+	}
+}
+
 // Return the PROXY connection header in version 2 (binary) format, as a byte slice
-// Currently this conversion is hardcoded for ipv4 source and dest addresses, and TCP connection type
-// TODO: support IPv6 addresses and UDP connection types
+// Currently this conversion assumes stream (TCP) connection type only.
+// TODO: support UDP connection types.
 func (c *HAproxy_conn) V2_Bytes() ([]byte, error) {
 	hapv2_source, err := c.source.Addr().MarshalBinary()
 	if err != nil {
@@ -101,11 +142,17 @@ func (c *HAproxy_conn) V2_Bytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: need to set up family / proto according to address types.
-	// I think that both addresses may need to be the SAME type (v4 / v6) - need to check that https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
-	// 2 = Version 2, 1 = request comes from a proxy
-	// 1 = AF_INET, 	1 = STREAM (TCP)
-	_, err = header.Write([]byte("\x21\x11"))
+	// Version and Request fields
+	err = header.WriteByte(V2_VERSION | V2_CMD_PROXY)
+	if err != nil {
+		return nil, err
+	}
+
+	// Already checked addresses are the SAME type (v4 / v6)
+	err = header.WriteByte(c.V2_proto())
+	if err != nil {
+		return nil, err
+	}
 
 	addrs := new(bytes.Buffer)
 	// Address field containst source + dest + source_port + dest_port

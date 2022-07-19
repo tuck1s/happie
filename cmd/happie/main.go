@@ -49,6 +49,7 @@ func main() {
 			"\t\tMust be an address hosted by the proxy itself, otherwise the request will fail.\n" +
 			"\t\tSet to :0 to have the proxy choose an ephemeral port.\n\n" +
 			"dest:port\tThe service the proxy should connect to. e.g. 64.233.167.27:smtp (Google mail server).\n\n" +
+			"Enclose IPv6 addresses with [] - e.g. [2a00:1450:400c:c0a::1b]:smtp" +
 			"FLAGS:\n"
 		fmt.Fprintf(flag.CommandLine.Output(), helpText, os.Args[0])
 		flag.PrintDefaults()
