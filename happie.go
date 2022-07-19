@@ -68,20 +68,6 @@ func New(proxy_addr_port, source_addr_port, dest_addr_port string) (*HAproxy_con
 	return &conn, nil
 }
 
-// PROXY protocol version 2 header, which may be easily expressed in big-endian binary format
-type HAproxy_header_v2_ip4 struct {
-	sig1, sig2, sig3  uint32 // 12 byte signature at start
-	version_command   uint8
-	addr_family_proto uint8
-	addr_length       uint16
-	ipv4_addr         struct {
-		source      uint32
-		dest        uint32
-		source_port uint16
-		dest_port   uint16
-	}
-}
-
 // Return the PROXY connection header in version 1 (text) format, as a byte slice
 // Currently this conversion is hardcoded for ipv4 source and dest addresses, and TCP connection type
 // TODO: support IPv6 addresses and UDP connection types
@@ -100,25 +86,58 @@ func (c *HAproxy_conn) V1_Bytes() ([]byte, error) {
 // Currently this conversion is hardcoded for ipv4 source and dest addresses, and TCP connection type
 // TODO: support IPv6 addresses and UDP connection types
 func (c *HAproxy_conn) V2_Bytes() ([]byte, error) {
-	var hapv2 HAproxy_header_v2_ip4
-	// PROXY protocol v2 signature - 12 fixed bytes at the start
-	hapv2.sig1 = binary.BigEndian.Uint32([]byte("\r\n\r\n"))
-	hapv2.sig2 = binary.BigEndian.Uint32([]byte("\x00\r\nQ"))
-	hapv2.sig3 = binary.BigEndian.Uint32([]byte("UIT\n"))
-	hapv2.version_command = 0x21   // 2 = Version 2, 1 = request comes from a proxy
-	hapv2.addr_family_proto = 0x11 // 1 = AF_INET, 	1 = STREAM (TCP)
-
-	hapv2.ipv4_addr.source = binary.BigEndian.Uint32(c.source.Addr().AsSlice())
-	hapv2.ipv4_addr.source_port = c.source.Port()
-	hapv2.ipv4_addr.dest = binary.BigEndian.Uint32(c.dest.Addr().AsSlice())
-	hapv2.ipv4_addr.dest_port = c.dest.Port()
-
-	// Address field containst source + dest + source_port + dest_port
-	hapv2.addr_length = uint16(binary.Size(hapv2.ipv4_addr))
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, hapv2)
+	hapv2_source, err := c.source.Addr().MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	hapv2_dest, err := c.dest.Addr().MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	header := new(bytes.Buffer)
+	// PROXY protocol v2 signature - 12 fixed bytes at the start
+	_, err = header.Write([]byte("\r\n\r\n\x00\r\nQUIT\n"))
+	if err != nil {
+		return nil, err
+	}
+	// TODO: need to set up family / proto according to address types.
+	// I think that both addresses may need to be the SAME type (v4 / v6) - need to check that https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
+	// 2 = Version 2, 1 = request comes from a proxy
+	// 1 = AF_INET, 	1 = STREAM (TCP)
+	_, err = header.Write([]byte("\x21\x11"))
+
+	addrs := new(bytes.Buffer)
+	// Address field containst source + dest + source_port + dest_port
+	_, err = addrs.Write(hapv2_source)
+	if err != nil {
+		return nil, err
+	}
+	_, err = addrs.Write(hapv2_dest)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(addrs, binary.BigEndian, c.source.Port())
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(addrs, binary.BigEndian, c.dest.Port())
+	if err != nil {
+		return nil, err
+	}
+
+	// Put the length of the composite address fields, then the addresses, into the header
+	len := uint16(addrs.Len())
+	err = binary.Write(header, binary.BigEndian, len)
+	if err != nil {
+		return nil, err
+	}
+	_, err = addrs.WriteTo(header)
+	if err != nil {
+		return nil, err
+	}
+
+	return header.Bytes(), nil
 }
