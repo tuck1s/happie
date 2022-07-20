@@ -11,4 +11,4 @@ builds:
       - arm64
     id: "happie_cli"
     dir: .
-    main: ./cmd/happie/happie.go
+    main: ./cmd/happie/main.go
